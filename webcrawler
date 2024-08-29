@@ -1,0 +1,89 @@
+!pip install requests beautifulsoup4
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs, urljoin
+def crawl_and_extract_parameters(url, base_url, visited):
+    """
+    Crawls the given URL, extracts all parameters, and follows links within the same domain.
+
+    Args:
+        url: The URL to crawl.
+        base_url: The base URL to ensure crawling stays within the same domain.
+        visited: A set to track visited URLs.
+
+    Returns:
+        A dictionary of extracted parameters from all visited URLs.
+    """
+    if url in visited:
+        return {}
+
+    visited.add(url)
+    params_dict = {}
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        # Parse the content with BeautifulSoup
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Extract and store parameters from the current URL
+        parsed_url = urlparse(url)
+        params = parse_qs(parsed_url.query)
+        params_dict[url] = params
+
+        # Find and crawl all links on the current page
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            full_url = urljoin(base_url, href)
+            if full_url.startswith(base_url):
+                params_dict.update(crawl_and_extract_parameters(full_url, base_url, visited))
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL {url}: {e}")
+
+    return params_dict
+def generate_html_report(params_dict, filename="parameters_report.html"):
+    """
+    Generates an HTML report for the extracted parameters.
+
+    Args:
+        params_dict: A dictionary of URLs and their extracted parameters.
+        filename: The name of the HTML file to save the report.
+    """
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>URL Parameters Report</title>
+    </head>
+    <body>
+        <h1>URL Parameters Report</h1>
+    """
+
+    for url, params in params_dict.items():
+        html_content += f"<h2>Parameters for URL: {url}</h2><ul>"
+        for key, value in params.items():
+            html_content += f"<li><b>{key}:</b> {', '.join(value)}</li>"
+        html_content += "</ul>"
+
+    html_content += """
+    </body>
+    </html>
+    """
+
+    with open(filename, "w") as f:
+        f.write(html_content)
+
+
+if __name__ == "__main__":
+    url = input("Enter the URL to start crawling: ")
+    base_url = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
+    visited_urls = set()
+    params = crawl_and_extract_parameters(url, base_url, visited_urls)
+    generate_html_report(params)
+    print("Report generated as parameters_report.html")
+
+
+from google.colab import files
+files.download('parameters_report.html')
